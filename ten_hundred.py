@@ -1,9 +1,13 @@
 __author__ = "Alec Bailey"
 __email__ = "ajbailey3@wisc.edu"
 
+import copy
 import csv
 from copy import deepcopy
 import math
+
+# Define headers for later use (getting latest date etc)
+headers = []
 
 
 # Load all data from CSV file into a dictionary
@@ -13,6 +17,7 @@ import math
 # each row represents either a country or a province/state within
 # a country (this is maintained for clustering purposes)
 def load_data(filepath):
+    global headers
     # Define a list of all data columns
     all_data_columns = []
 
@@ -45,6 +50,54 @@ def load_data(filepath):
     return all_data_columns
 
 
-data = load_data('time_series_covid19_confirmed_global.csv')
+# Takes in one row from the data loaded from the previous function, calculates the
+# corresponding x, y values for that region as specified in the video,
+# and returns them in a single structure.
+# Where X is is the number of days since the number of cases was 1/10th current
+# and Y is the number of days since the number of cases was 1/100th current
+def calculate_x_y(time_series: dict):
+    global headers
+    # Get the latest date from the file headers
+    latest_date = headers[len(headers) -1]
+    # Access the number of cases at the latest date
+    number_of_cases = time_series[latest_date]
 
-print(data[0])
+    # Calculate the x and y number of cases
+    x_cases = math.floor(int(number_of_cases) / 10)
+    y_cases = math.floor(int(number_of_cases) / 100)
+
+    # The x and y date which will be returned
+    x_date = ''
+    y_date = ''
+
+    # Create a copy to not destroy data
+    time_series = copy.copy(time_series)
+    # Pop off un needed data
+    time_series.pop('Province/State')
+    time_series.pop('Country/Region')
+
+    # Keep track of the previous date during iteration
+    previous_date = ''
+    # Iterate over the dict and find the date with the corresponding values
+    for key, value in time_series.items():
+        print(key, '->', value)
+        # When the x value is found, assign it and break from the loop
+        if int(value) >= x_cases and x_date == '':
+            x_date = previous_date
+            break
+        # When the y value is found, assign it if it has not yet been assigned
+        elif int(value) >= y_cases and y_date == '':
+            y_date = previous_date
+            previous_date = key
+        else:
+            previous_date = key
+
+    return x_date, y_date
+
+# Defines a main method for running code to prevent import issues
+if __name__ == "__main__":
+
+
+    data = load_data('time_series_covid19_confirmed_global.csv')
+    print(data[0])
+    print(calculate_x_y(data[0]))
