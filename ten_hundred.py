@@ -5,7 +5,8 @@ import copy
 import csv
 from copy import deepcopy
 import math
-import scipy
+import scipy.cluster
+import numpy
 import datetime
 
 # Define headers for later use (getting latest date etc)
@@ -84,7 +85,7 @@ def calculate_x_y(time_series: dict):
     for key, value in time_series.items():
         print(key, '->', value)
         # When the x value is found, assign it and break from the loop
-        if int(value) >= x_cases and x_date == '':
+        if int(value) >= x_cases and x_date == '' and y_date != '':
             x_date = previous_date
             break
         # When the y value is found, assign it if it has not yet been assigned
@@ -109,12 +110,19 @@ def calculate_x_y(time_series: dict):
 
 # Preform
 def hac(dataset):
-    pass
+    # Get all observation vectors
+    observation_vectors = []
+    for data_point in dataset:
+        observation_vectors.append(list(calculate_x_y(data_point)))
 
+    cluster = scipy.cluster.hierarchy.linkage(numpy.asarray(observation_vectors), method="single", metric="euclidean")
+    return cluster
 # Defines a main method for running code to prevent import issues
 if __name__ == "__main__":
 
 
     data = load_data('time_series_covid19_confirmed_global.csv')
     print(data[0])
-    print(calculate_x_y(data[0]))
+    for i in range(0, len(data)):
+        print('INDEX',i)
+        print(calculate_x_y(data[i]))
