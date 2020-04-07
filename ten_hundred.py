@@ -5,6 +5,8 @@ import copy
 import csv
 from copy import deepcopy
 import math
+import scipy
+import datetime
 
 # Define headers for later use (getting latest date etc)
 headers = []
@@ -92,7 +94,22 @@ def calculate_x_y(time_series: dict):
         else:
             previous_date = key
 
-    return x_date, y_date
+    # Get all dates as datetime format
+    x_date = datetime.datetime.strptime(x_date, '%m/%d/%y').date()
+    y_date = datetime.datetime.strptime(y_date, '%m/%d/%y').date()
+    recent_date = datetime.datetime.strptime(latest_date, '%m/%d/%y').date()
+
+    # Compute the difference between the most recent date cases n and cases = n/10
+    x_diff = (recent_date - x_date).days
+    # Compute the difference between cases = n/10 and cases = n/100
+    y_diff = (x_date - y_date).days
+
+    return x_diff, y_diff
+
+
+# Preform
+def hac(dataset):
+    pass
 
 # Defines a main method for running code to prevent import issues
 if __name__ == "__main__":
