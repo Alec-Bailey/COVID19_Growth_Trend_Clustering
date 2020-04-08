@@ -85,7 +85,10 @@ def calculate_x_y(time_series: dict):
     for key, value in time_series.items():
         print(key, '->', value)
         # When the x value is found, assign it and break from the loop
-        if int(value) >= x_cases and x_date == '' and y_date != '':
+        if int(value) >= x_cases and x_date == '':
+            # If x_date is equal to y_date, also set y date
+            if y_date == '':
+                y_date = previous_date
             x_date = previous_date
             break
         # When the y value is found, assign it if it has not yet been assigned
@@ -115,14 +118,18 @@ def hac(dataset):
     for data_point in dataset:
         observation_vectors.append(list(calculate_x_y(data_point)))
 
+    # Create a matrix of m-1 rows and 4 columns where m is the number of data entries
+    # which intuitively has a minimum of m-1 clusters, and 4 columns
+    # with the form (cluster 1, cluster 2, distance between clusters, number of data points in cluster)
+
+
     cluster = scipy.cluster.hierarchy.linkage(numpy.asarray(observation_vectors), method="single", metric="euclidean")
     return cluster
+
+
 # Defines a main method for running code to prevent import issues
 if __name__ == "__main__":
 
-
     data = load_data('time_series_covid19_confirmed_global.csv')
-    print(data[0])
-    for i in range(0, len(data)):
-        print('INDEX',i)
-        print(calculate_x_y(data[i]))
+    hac = hac(data)
+    print(hac)
