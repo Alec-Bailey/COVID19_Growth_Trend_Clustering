@@ -6,8 +6,10 @@ import csv
 from copy import deepcopy
 import math
 import scipy.cluster
+import scipy.spatial.distance
 import numpy
 import datetime
+from collections import OrderedDict
 
 # Define headers for later use (getting latest date etc)
 headers = []
@@ -33,7 +35,7 @@ def load_data(filepath):
 
         # Initialize a data array containing all data
         # to None for every entry
-        data = {'Province/State': None, 'Country/Region': None}
+        data = OrderedDict({'Province/State': None, 'Country/Region': None})
         # Include the first 2 columns to ignore lat/long data
         for i in range(4, len(headers)):
             data[headers[i]] = None
@@ -61,9 +63,13 @@ def load_data(filepath):
 def calculate_x_y(time_series: dict):
     global headers
     # Get the latest date from the file headers
-    latest_date = headers[len(headers) -1]
+    latest_date = headers[len(headers) - 1]
     # Access the number of cases at the latest date
-    number_of_cases = time_series[latest_date]
+    number_of_cases = int(time_series[latest_date])
+
+    # If there are no cases, return none and exclude the value
+    if int(number_of_cases) == 0:
+        return math.nan, math.nan
 
     # Calculate the x and y number of cases
     x_cases = math.floor(int(number_of_cases) / 10)
@@ -79,57 +85,111 @@ def calculate_x_y(time_series: dict):
     time_series.pop('Province/State')
     time_series.pop('Country/Region')
 
-    # Keep track of the previous date during iteration
-    previous_date = ''
     # Iterate over the dict and find the date with the corresponding values
-    for key, value in time_series.items():
-        print(key, '->', value)
-        # When the x value is found, assign it and break from the loop
-        if int(value) >= x_cases and x_date == '':
-            # If x_date is equal to y_date, also set y date
-            if y_date == '':
-                y_date = previous_date
-            x_date = previous_date
+    for key, value in time_series.items().__reversed__():
+        # When x value is found, assign it
+        if int(value) <= x_cases and x_date == '':
+            x_date = key
+        # When the y value is found, assign it and break from the loop
+        if int(value) <= y_cases and y_date == '':
+            y_date = key
             break
-        # When the y value is found, assign it if it has not yet been assigned
-        elif int(value) >= y_cases and y_date == '':
-            y_date = previous_date
-            previous_date = key
-        else:
-            previous_date = key
 
     # Get all dates as datetime format
     x_date = datetime.datetime.strptime(x_date, '%m/%d/%y').date()
-    y_date = datetime.datetime.strptime(y_date, '%m/%d/%y').date()
     recent_date = datetime.datetime.strptime(latest_date, '%m/%d/%y').date()
 
     # Compute the difference between the most recent date cases n and cases = n/10
     x_diff = (recent_date - x_date).days
-    # Compute the difference between cases = n/10 and cases = n/100
+
+    # Filter out data where a n/100 y_date cannot be found
+    # for example Beijing
+    if y_date == '':
+        return x_diff, math.nan
+
+    y_date = datetime.datetime.strptime(y_date, '%m/%d/%y').date()
+        # Compute the difference between cases = n/10 and cases = n/100
     y_diff = (x_date - y_date).days
 
     return x_diff, y_diff
 
 
-# Preform
+# Preform HAC with single-linkage
 def hac(dataset):
-    # Get all observation vectors
-    observation_vectors = []
-    for data_point in dataset:
-        observation_vectors.append(list(calculate_x_y(data_point)))
+
+    # Filter out the nan data points and append valid data to the working list
+    vectors = []
+    for x_y in dataset:
+        if not math.isnan(x_y[0]) and not math.isnan(x_y[1]):
+            vectors.append(x_y)
+
+    # Maintains a list of 'working vectors' which can be removed from in order to
+    # keep track of which vectors are still not merged
+    working_vectors = copy.deepcopy(vectors)
+
+    # Defines m, which is the initial number of data points,creating m-1 clusters
+    m = len(vectors)
 
     # Create a matrix of m-1 rows and 4 columns where m is the number of data entries
     # which intuitively has a minimum of m-1 clusters, and 4 columns
     # with the form (cluster 1, cluster 2, distance between clusters, number of data points in cluster)
+    working_clusters = []
+    for i in range(0, len(vectors)):
+        # [Cluster 1, Cluster2, Distance, Data Points, Cluster Index]
+        working_clusters.append([i, i, 0, 1, [vectors[i]]])
 
+    # Define the array of clusters which will be added to
+    clusters = []
 
-    cluster = scipy.cluster.hierarchy.linkage(numpy.asarray(observation_vectors), method="single", metric="euclidean")
-    return cluster
+    for x in range(0, len(working_clusters) -1):
+        # Create the first cluster traversing backwards so that the lowest index cluster
+        # takes precedence in a tie
+        best = [float('inf'), []]
+        for i in range(0, len(working_clusters)):
+            for j in range(i, len(working_clusters)):
+                # Do not compare a cluster to itself
+                if i != j:
+                    # Get the smallest euclidean distance between points, when comparing a cluster
+                    # use the two closest points
+
+                    # Create two lists of points which are recursively found
+                    pointsA = working_clusters[j][4]
+                    pointsB = working_clusters[i][4]
+
+                    min_dist = float('inf')
+                    # compare all returned points and find the minimum distance
+                    for pA in pointsA:
+                        for pB in pointsB:
+                            distance = scipy.spatial.distance.euclidean(pA, pB)
+                            if distance < min_dist:
+                                min_dist = distance
+
+                    # If this is better than the previous best, set it
+                    if min_dist < best[0]:
+                        best = [min_dist, [working_clusters[i], working_clusters[j]]]
+
+        # Add the first cluster to the list of clusters
+        clusters.append([best[1][0][0], best[1][1][0], best[0], best[1][0][3] + best[1][1][3]])
+        # Change the first indexed working cluster to the created cluster
+        working_clusters.append([m + x, m + x, best[0], best[1][0][3] + best[1][1][3], best[1][0][4] + best[1][1][4]])
+        # Pop off the merged cluster from working clusters
+        working_clusters.remove(best[1][0])
+        working_clusters.remove(best[1][1])
+
+    return numpy.asarray(clusters)
 
 
 # Defines a main method for running code to prevent import issues
 if __name__ == "__main__":
 
     data = load_data('time_series_covid19_confirmed_global.csv')
-    hac = hac(data)
+
+    observation_vectors = []
+    for point in data:
+        x_y = calculate_x_y(point)
+        observation_vectors.append(x_y)
+
+    # print(observation_vectors)
+    hac = hac(observation_vectors)
+
     print(hac)
